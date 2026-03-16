@@ -68,7 +68,8 @@ CREATE TABLE ticker_items (
   sort_order TINYINT UNSIGNED NOT NULL DEFAULT 0,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  KEY idx_active_order (is_active, sort_order)
+  KEY idx_active_order (is_active, sort_order),
+  KEY idx_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Admin users (for add/edit/delete content)

@@ -26,12 +26,14 @@ try {
     // table may already exist
 }
 
-$username = 'Salah';
-$password = 'Salahaa00!';
+$username = getenv('SETUP_ADMIN_USER') ?: 'admin';
+$password = getenv('SETUP_ADMIN_PASS');
+if (empty($password)) {
+    die('Set SETUP_ADMIN_PASS (and optionally SETUP_ADMIN_USER) in the environment, then run this script once. Example: SETUP_ADMIN_USER=admin SETUP_ADMIN_PASS=YourSecurePassword php setup.php');
+}
 $hash = password_hash($password, PASSWORD_DEFAULT);
 
 $stmt = $pdo->prepare('INSERT INTO users (username, password_hash, role) VALUES (?, ?, "admin") ON DUPLICATE KEY UPDATE password_hash = ?');
 $stmt->execute([$username, $hash, $hash]);
 
-echo "Admin user created: username=<strong>" . htmlspecialchars($username) . "</strong>, password=<strong>••••••••••</strong><br>";
-echo "Log in at <a href='login.php'>monitor/login.php</a>. Then DELETE this setup.php file.";
+echo "Admin user created: username=<strong>" . htmlspecialchars($username) . "</strong>. Log in at <a href='login.php'>monitor/login.php</a>. Then DELETE this setup.php file for security.";
