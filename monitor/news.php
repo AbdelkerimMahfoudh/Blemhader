@@ -27,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && (int)($_SERVER['CO
     $title_fr = trim($_POST['title_fr'] ?? '');
     $image_url = trim($_POST['image_url'] ?? '');
     $video_url = trim($_POST['video_url'] ?? '');
-    $remove_video = !empty($_POST['remove_video']);
+    $media_type = ($_POST['media_type'] ?? 'image') === 'video' ? 'video' : 'image';
     $excerpt_ar = trim($_POST['excerpt_ar'] ?? '');
     $excerpt_fr = trim($_POST['excerpt_fr'] ?? '');
     $body_ar = trim($_POST['body_ar'] ?? '');
@@ -43,29 +43,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && (int)($_SERVER['CO
         exit;
     }
 
-    $uploaded = handle_image_upload();
-    $final_image = $uploaded ?: $image_url;
-    if ($edit_id && !$final_image) {
-        $row = $pdo->prepare('SELECT image_url FROM articles WHERE id = ? AND category_id = ?');
+    // A post has either a photo or a video (never both)
+    $existing = ['image_url' => '', 'video_url' => ''];
+    if ($edit_id) {
+        $row = $pdo->prepare('SELECT image_url, video_url FROM articles WHERE id = ? AND category_id = ?');
         $row->execute([$edit_id, $category_id]);
-        $r = $row->fetch();
-        if ($r && !empty(trim($r['image_url'] ?? ''))) $final_image = trim($r['image_url']);
+        $existing = $row->fetch() ?: $existing;
     }
 
-    $video_file_attempted = !empty($_FILES['video_file']['name']);
-    $uploaded_video = handle_video_upload();
-    $final_video = $uploaded_video ?: $video_url;
-    if ($edit_id && !$final_video && !$remove_video) {
-        $row = $pdo->prepare('SELECT video_url FROM articles WHERE id = ? AND category_id = ?');
-        $row->execute([$edit_id, $category_id]);
-        $r = $row->fetch();
-        if ($r && !empty(trim($r['video_url'] ?? ''))) $final_video = trim($r['video_url']);
+    $final_image = '';
+    $final_video = '';
+    $video_file_attempted = false;
+    $uploaded_video = '';
+    if ($media_type === 'image') {
+        $final_image = handle_image_upload() ?: $image_url;
+        if (!$final_image) $final_image = trim($existing['image_url'] ?? '');
+    } else {
+        $video_file_attempted = !empty($_FILES['video_file']['name']);
+        $uploaded_video = handle_video_upload();
+        $final_video = $uploaded_video ?: $video_url;
+        if (!$final_video && !$video_file_attempted) $final_video = trim($existing['video_url'] ?? '');
     }
 
     if ($video_file_attempted && !$uploaded_video) {
         $message = 'Video upload failed (allowed: mp4, webm, ogg, mov; max ' . (int)(MAX_VIDEO_SIZE / 1024 / 1024) . ' MB; also check the server upload_max_filesize / post_max_size).';
-    } elseif ($video_url && !$uploaded_video && embed_video($video_url) === '') {
-        $message = 'Unsupported video URL. Use a YouTube, Vimeo, Facebook or direct .mp4/.webm/.ogg link.';
+    } elseif ($media_type === 'video' && $video_url && !$uploaded_video && embed_video($video_url) === '') {
+        $message = 'Unsupported video link. Use a YouTube, Vimeo, Facebook or direct .mp4/.webm/.ogg link.';
+    } elseif ($media_type === 'video' && !$final_video && ($title_ar || $title_fr)) {
+        $message = 'Video selected: paste a video link or upload a video file.';
     } elseif ($title_ar && $title_fr && ($body_ar || $body_fr || $final_video)) {
         $published_at = $status === 'published' ? date('Y-m-d H:i:s') : null;
         $slug = 'news-' . ($edit_id ? $edit_id : time());
@@ -124,28 +129,41 @@ require __DIR__ . '/includes/header.php';
         <input type="text" name="title_fr" class="form-control" required value="<?php echo htmlspecialchars($editing['title_fr'] ?? ''); ?>">
       </div>
     </div>
+    <?php $is_video = ($_POST['media_type'] ?? (!empty($editing['video_url']) ? 'video' : 'image')) === 'video'; ?>
     <div class="mb-2">
-      <label class="form-label">Thumbnail</label>
-      <input type="url" name="image_url" class="form-control mb-1" placeholder="https://... (optional)" value="<?php echo htmlspecialchars($editing['image_url'] ?? ''); ?>">
-      <label class="form-label small text-muted">Or upload image (jpg, png, webp, gif, max 5 MB)</label>
-      <input type="file" name="image_file" class="form-control" accept="image/jpeg,image/png,image/webp,image/gif">
-      <?php if (!empty($editing['image_url'])): ?>
-      <small class="text-muted">Current: <?php echo htmlspecialchars($editing['image_url']); ?></small>
-      <?php endif; ?>
-    </div>
-    <div class="mb-2">
-      <label class="form-label">Video (optional)</label>
-      <input type="url" name="video_url" class="form-control mb-1" placeholder="YouTube, Vimeo, Facebook or direct .mp4 link" value="<?php echo htmlspecialchars((!empty($editing['video_url']) && strpos($editing['video_url'], 'uploads/') !== 0) ? $editing['video_url'] : ''); ?>">
-      <label class="form-label small text-muted">Or upload video file (mp4, webm, ogg, mov, max <?php echo (int)(MAX_VIDEO_SIZE / 1024 / 1024); ?> MB)</label>
-      <input type="file" name="video_file" class="form-control" accept="video/mp4,video/webm,video/ogg,video/quicktime">
-      <?php if (!empty($editing['video_url'])): ?>
-      <small class="text-muted d-block">Current: <?php echo htmlspecialchars($editing['video_url']); ?></small>
-      <div class="form-check">
-        <input class="form-check-input" type="checkbox" name="remove_video" value="1" id="remove_video">
-        <label class="form-check-label small" for="remove_video">Remove video</label>
+      <label class="form-label d-block">Media</label>
+      <div class="btn-group mb-2" role="group">
+        <input type="radio" class="btn-check" name="media_type" id="media_image" value="image" <?php echo $is_video ? '' : 'checked'; ?>>
+        <label class="btn btn-outline-primary btn-sm" for="media_image">Photo</label>
+        <input type="radio" class="btn-check" name="media_type" id="media_video" value="video" <?php echo $is_video ? 'checked' : ''; ?>>
+        <label class="btn btn-outline-primary btn-sm" for="media_video">Video</label>
       </div>
-      <?php endif; ?>
+      <div id="media_image_fields"<?php echo $is_video ? ' style="display:none"' : ''; ?>>
+        <input type="url" name="image_url" class="form-control mb-1" placeholder="https://... (optional)" value="<?php echo htmlspecialchars($editing['image_url'] ?? ''); ?>">
+        <label class="form-label small text-muted">Or upload image (jpg, png, webp, gif, max 5 MB)</label>
+        <input type="file" name="image_file" class="form-control" accept="image/jpeg,image/png,image/webp,image/gif">
+        <?php if (!empty($editing['image_url'])): ?>
+        <small class="text-muted">Current: <?php echo htmlspecialchars($editing['image_url']); ?></small>
+        <?php endif; ?>
+      </div>
+      <div id="media_video_fields"<?php echo $is_video ? '' : ' style="display:none"'; ?>>
+        <input type="url" name="video_url" class="form-control mb-1" placeholder="YouTube, Vimeo, Facebook or direct .mp4 link" value="<?php echo htmlspecialchars((!empty($editing['video_url']) && strpos($editing['video_url'], 'uploads/') !== 0) ? $editing['video_url'] : ''); ?>">
+        <label class="form-label small text-muted">Or upload video (mp4, webm, ogg, mov, max <?php echo (int)(MAX_VIDEO_SIZE / 1024 / 1024); ?> MB)</label>
+        <input type="file" name="video_file" class="form-control" accept="video/mp4,video/webm,video/ogg,video/quicktime">
+        <?php if (!empty($editing['video_url'])): ?>
+        <small class="text-muted">Current: <?php echo htmlspecialchars($editing['video_url']); ?></small>
+        <?php endif; ?>
+      </div>
     </div>
+    <script>
+    document.querySelectorAll('input[name="media_type"]').forEach(function (r) {
+      r.addEventListener('change', function () {
+        var video = document.getElementById('media_video').checked;
+        document.getElementById('media_image_fields').style.display = video ? 'none' : '';
+        document.getElementById('media_video_fields').style.display = video ? '' : 'none';
+      });
+    });
+    </script>
     <div class="row g-2 mb-2">
       <div class="col-md-6">
         <label class="form-label">Excerpt (AR) – first paragraph shown on list</label>
@@ -186,13 +204,12 @@ require __DIR__ . '/includes/header.php';
 <?php endif; ?>
 
 <table class="table table-sm">
-  <thead><tr><th>Title</th><th>Thumbnail</th><th>Video</th><th>Status</th><th>Order</th><th></th></tr></thead>
+  <thead><tr><th>Title</th><th>Media</th><th>Status</th><th>Order</th><th></th></tr></thead>
   <tbody>
     <?php foreach ($items as $i): ?>
     <tr>
       <td><?php echo htmlspecialchars($i['title_ar'] ?: $i['title_fr']); ?></td>
-      <td><?php echo !empty($i['image_url']) ? 'Yes' : '—'; ?></td>
-      <td><?php echo !empty($i['video_url']) ? 'Yes' : '—'; ?></td>
+      <td><?php echo !empty($i['video_url']) ? 'Video' : (!empty($i['image_url']) ? 'Photo' : '—'); ?></td>
       <td><?php echo htmlspecialchars($i['status']); ?></td>
       <td><?php echo (int)$i['sort_order']; ?></td>
       <td>
