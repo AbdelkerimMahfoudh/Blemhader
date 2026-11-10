@@ -32,7 +32,10 @@ $back_fr = $article['cat_fr'];
       <span class="ar-text"><?php echo htmlspecialchars($article['title_ar']); ?></span>
       <span class="fr-text"><?php echo htmlspecialchars($article['title_fr']); ?></span>
     </h1>
-    <?php if (!empty($article['image_url'])): ?>
+    <?php $video_html = embed_video($article['video_url'] ?? ''); ?>
+    <?php if ($video_html): ?>
+    <div class="post-video mb-4"><?php echo $video_html; ?></div>
+    <?php elseif (!empty($article['image_url'])): ?>
     <div class="post-thumb mb-4">
       <img src="<?php echo htmlspecialchars($article['image_url']); ?>" alt="" class="img-fluid rounded" style="max-height:400px;width:100%;object-fit:cover;">
     </div>

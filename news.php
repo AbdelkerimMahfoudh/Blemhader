@@ -9,7 +9,7 @@ if ($pdo) {
     $stmt->execute(['news']);
     $cat = $stmt->fetch();
     if ($cat) {
-        $st = $pdo->prepare('SELECT id, title_ar, title_fr, image_url, excerpt_ar, excerpt_fr, body_ar, body_fr, published_at FROM articles WHERE category_id = ? AND status = "published" ORDER BY sort_order ASC, published_at DESC, id DESC');
+        $st = $pdo->prepare('SELECT id, title_ar, title_fr, image_url, video_url, excerpt_ar, excerpt_fr, body_ar, body_fr, published_at FROM articles WHERE category_id = ? AND status = "published" ORDER BY sort_order ASC, published_at DESC, id DESC');
         $st->execute([(int)$cat['id']]);
         $items = $st->fetchAll();
     }
@@ -32,15 +32,20 @@ if ($pdo) {
     <?php foreach ($items as $item):
       $preview_ar = post_preview($item['excerpt_ar'] ?? '', $item['body_ar'] ?? '');
       $preview_fr = post_preview($item['excerpt_fr'] ?? '', $item['body_fr'] ?? '');
+      $thumb = item_thumb_url($item);
+      $has_video = !empty($item['video_url']);
     ?>
     <div class="post-card">
       <a href="article.php?id=<?php echo (int)$item['id']; ?>" class="post-card-link">
         <div class="post-card-img-wrap">
-          <?php if (!empty($item['image_url'])): ?>
-          <img src="<?php echo htmlspecialchars($item['image_url']); ?>" alt="" class="post-card-img">
+          <?php if ($thumb): ?>
+          <img src="<?php echo htmlspecialchars($thumb); ?>" alt="" class="post-card-img">
+          <?php elseif ($has_video && preg_match('#\.(mp4|webm|ogg|mov)(\?|$)#i', $item['video_url'])): ?>
+          <video src="<?php echo htmlspecialchars($item['video_url']); ?>#t=0.5" class="post-card-img" muted playsinline preload="metadata"></video>
           <?php else: ?>
           <div class="post-card-img-placeholder"></div>
           <?php endif; ?>
+          <?php if ($has_video): ?><span class="post-card-play" aria-hidden="true">&#9654;</span><?php endif; ?>
         </div>
         <div class="post-card-body">
           <h3>
@@ -52,8 +57,13 @@ if ($pdo) {
             <span class="fr-text"><?php echo htmlspecialchars($preview_fr); ?></span>
           </p>
           <span class="post-card-more">
+            <?php if ($has_video): ?>
+            <span class="ar-text">شاهد الفيديو</span>
+            <span class="fr-text">Voir la vidéo</span>
+            <?php else: ?>
             <span class="ar-text">اقرأ المزيد</span>
             <span class="fr-text">Lire la suite</span>
+            <?php endif; ?>
           </span>
         </div>
       </a>

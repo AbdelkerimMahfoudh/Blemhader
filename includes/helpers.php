@@ -101,7 +101,7 @@ function embed_video($url) {
         $embed_url = 'https://www.facebook.com/plugins/video.php?href=' . rawurlencode($url) . '&show_text=false&width=560';
         return '<iframe src="' . htmlspecialchars($embed_url) . '" frameborder="0" allowfullscreen allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share" loading="lazy" style="width:100%;height:100%;min-height:315px;"></iframe>';
     }
-    if (preg_match('#\.(mp4|webm|ogg)(\?|$)#i', $url)) {
+    if (preg_match('#\.(mp4|webm|ogg|mov)(\?|$)#i', $url)) {
         return '<video src="' . htmlspecialchars($url) . '" controls playsinline preload="metadata" style="width:100%;height:100%;object-fit:cover;"></video>';
     }
     return '';

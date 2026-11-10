@@ -19,10 +19,15 @@ if (!$category_id) {
 $edit_id = isset($_GET['edit']) ? (int)$_GET['edit'] : 0;
 $message = '';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
+    // PHP discards the whole request when it exceeds post_max_size (typical with large videos)
+    $message = 'Upload too large for the server (post_max_size = ' . ini_get('post_max_size') . '). Use a smaller file or a video URL.';
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $title_ar = trim($_POST['title_ar'] ?? '');
     $title_fr = trim($_POST['title_fr'] ?? '');
     $image_url = trim($_POST['image_url'] ?? '');
+    $video_url = trim($_POST['video_url'] ?? '');
+    $remove_video = !empty($_POST['remove_video']);
     $excerpt_ar = trim($_POST['excerpt_ar'] ?? '');
     $excerpt_fr = trim($_POST['excerpt_fr'] ?? '');
     $body_ar = trim($_POST['body_ar'] ?? '');
@@ -47,27 +52,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($r && !empty(trim($r['image_url'] ?? ''))) $final_image = trim($r['image_url']);
     }
 
-    if ($title_ar && $title_fr && ($body_ar || $body_fr)) {
+    $video_file_attempted = !empty($_FILES['video_file']['name']);
+    $uploaded_video = handle_video_upload();
+    $final_video = $uploaded_video ?: $video_url;
+    if ($edit_id && !$final_video && !$remove_video) {
+        $row = $pdo->prepare('SELECT video_url FROM articles WHERE id = ? AND category_id = ?');
+        $row->execute([$edit_id, $category_id]);
+        $r = $row->fetch();
+        if ($r && !empty(trim($r['video_url'] ?? ''))) $final_video = trim($r['video_url']);
+    }
+
+    if ($video_file_attempted && !$uploaded_video) {
+        $message = 'Video upload failed (allowed: mp4, webm, ogg, mov; max ' . (int)(MAX_VIDEO_SIZE / 1024 / 1024) . ' MB; also check the server upload_max_filesize / post_max_size).';
+    } elseif ($video_url && !$uploaded_video && embed_video($video_url) === '') {
+        $message = 'Unsupported video URL. Use a YouTube, Vimeo, Facebook or direct .mp4/.webm/.ogg link.';
+    } elseif ($title_ar && $title_fr && ($body_ar || $body_fr || $final_video)) {
         $published_at = $status === 'published' ? date('Y-m-d H:i:s') : null;
         $slug = 'news-' . ($edit_id ? $edit_id : time());
         if ($edit_id) {
-            $pdo->prepare('UPDATE articles SET title_ar=?, title_fr=?, image_url=?, excerpt_ar=?, excerpt_fr=?, body_ar=?, body_fr=?, status=?, sort_order=?, published_at=? WHERE id=? AND category_id=?')
-                ->execute([$title_ar, $title_fr, $final_image ?: null, $excerpt_ar ?: null, $excerpt_fr ?: null, $body_ar ?: null, $body_fr ?: null, $status, $sort_order, $published_at ?: null, $edit_id, $category_id]);
+            $pdo->prepare('UPDATE articles SET title_ar=?, title_fr=?, image_url=?, video_url=?, excerpt_ar=?, excerpt_fr=?, body_ar=?, body_fr=?, status=?, sort_order=?, published_at=? WHERE id=? AND category_id=?')
+                ->execute([$title_ar, $title_fr, $final_image ?: null, $final_video ?: null, $excerpt_ar ?: null, $excerpt_fr ?: null, $body_ar ?: null, $body_fr ?: null, $status, $sort_order, $published_at ?: null, $edit_id, $category_id]);
             $message = 'Updated.';
         } else {
-            $pdo->prepare('INSERT INTO articles (category_id, title_ar, title_fr, slug, excerpt_ar, excerpt_fr, body_ar, body_fr, image_url, status, sort_order, published_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
-                ->execute([$category_id, $title_ar, $title_fr, $slug, $excerpt_ar ?: null, $excerpt_fr ?: null, $body_ar ?: null, $body_fr ?: null, $final_image ?: null, $status, $sort_order, $published_at]);
+            $pdo->prepare('INSERT INTO articles (category_id, title_ar, title_fr, slug, excerpt_ar, excerpt_fr, body_ar, body_fr, image_url, video_url, status, sort_order, published_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
+                ->execute([$category_id, $title_ar, $title_fr, $slug, $excerpt_ar ?: null, $excerpt_fr ?: null, $body_ar ?: null, $body_fr ?: null, $final_image ?: null, $final_video ?: null, $status, $sort_order, $published_at]);
             $message = 'Added.';
         }
         header('Location: news.php?msg=' . urlencode($message));
         exit;
     } elseif ($title_ar || $title_fr) {
-        $message = 'Title (AR & FR) and at least one body (AR or FR) are required.';
+        $message = 'Title (AR & FR) and at least a body (AR or FR) or a video are required.';
     }
 }
 
 $message = $message ?: ($_GET['msg'] ?? '');
-$items = $pdo->prepare('SELECT id, title_ar, title_fr, image_url, status, sort_order, created_at FROM articles WHERE category_id = ? ORDER BY sort_order ASC, published_at DESC, id DESC');
+$items = $pdo->prepare('SELECT id, title_ar, title_fr, image_url, video_url, status, sort_order, created_at FROM articles WHERE category_id = ? ORDER BY sort_order ASC, published_at DESC, id DESC');
 $items->execute([$category_id]);
 $items = $items->fetchAll();
 
@@ -114,6 +133,19 @@ require __DIR__ . '/includes/header.php';
       <small class="text-muted">Current: <?php echo htmlspecialchars($editing['image_url']); ?></small>
       <?php endif; ?>
     </div>
+    <div class="mb-2">
+      <label class="form-label">Video (optional)</label>
+      <input type="url" name="video_url" class="form-control mb-1" placeholder="YouTube, Vimeo, Facebook or direct .mp4 link" value="<?php echo htmlspecialchars((!empty($editing['video_url']) && strpos($editing['video_url'], 'uploads/') !== 0) ? $editing['video_url'] : ''); ?>">
+      <label class="form-label small text-muted">Or upload video file (mp4, webm, ogg, mov, max <?php echo (int)(MAX_VIDEO_SIZE / 1024 / 1024); ?> MB)</label>
+      <input type="file" name="video_file" class="form-control" accept="video/mp4,video/webm,video/ogg,video/quicktime">
+      <?php if (!empty($editing['video_url'])): ?>
+      <small class="text-muted d-block">Current: <?php echo htmlspecialchars($editing['video_url']); ?></small>
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" name="remove_video" value="1" id="remove_video">
+        <label class="form-check-label small" for="remove_video">Remove video</label>
+      </div>
+      <?php endif; ?>
+    </div>
     <div class="row g-2 mb-2">
       <div class="col-md-6">
         <label class="form-label">Excerpt (AR) – first paragraph shown on list</label>
@@ -126,12 +158,12 @@ require __DIR__ . '/includes/header.php';
     </div>
     <div class="row g-2 mb-2">
       <div class="col-md-6">
-        <label class="form-label">Body (AR) – full post</label>
-        <textarea name="body_ar" class="form-control" rows="8" required><?php echo htmlspecialchars($editing['body_ar'] ?? ''); ?></textarea>
+        <label class="form-label">Body (AR) – full post (optional if a video is set)</label>
+        <textarea name="body_ar" class="form-control" rows="8"><?php echo htmlspecialchars($editing['body_ar'] ?? ''); ?></textarea>
       </div>
       <div class="col-md-6">
         <label class="form-label">Body (FR)</label>
-        <textarea name="body_fr" class="form-control" rows="8" required><?php echo htmlspecialchars($editing['body_fr'] ?? ''); ?></textarea>
+        <textarea name="body_fr" class="form-control" rows="8"><?php echo htmlspecialchars($editing['body_fr'] ?? ''); ?></textarea>
       </div>
     </div>
     <div class="row g-2 mb-2">
@@ -154,12 +186,13 @@ require __DIR__ . '/includes/header.php';
 <?php endif; ?>
 
 <table class="table table-sm">
-  <thead><tr><th>Title</th><th>Thumbnail</th><th>Status</th><th>Order</th><th></th></tr></thead>
+  <thead><tr><th>Title</th><th>Thumbnail</th><th>Video</th><th>Status</th><th>Order</th><th></th></tr></thead>
   <tbody>
     <?php foreach ($items as $i): ?>
     <tr>
       <td><?php echo htmlspecialchars($i['title_ar'] ?: $i['title_fr']); ?></td>
       <td><?php echo !empty($i['image_url']) ? 'Yes' : '—'; ?></td>
+      <td><?php echo !empty($i['video_url']) ? 'Yes' : '—'; ?></td>
       <td><?php echo htmlspecialchars($i['status']); ?></td>
       <td><?php echo (int)$i['sort_order']; ?></td>
       <td>
