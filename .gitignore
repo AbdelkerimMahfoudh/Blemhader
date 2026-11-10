@@ -1,0 +1,4 @@
+# Live server config with secrets (DB password, API token) - never commit
+.htaccess
+error_log
+*.bak-*

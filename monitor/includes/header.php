@@ -8,6 +8,7 @@ if (!isset($admin_page_title)) $admin_page_title = 'Admin';
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title><?php echo htmlspecialchars($admin_page_title); ?> | monitor.blemhader</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <style>
     body { background: #f4f6f8; }
     .admin-sidebar { background: #1a2332; min-height: 100vh; color: #fff; width: 220px; flex-shrink: 0; }
@@ -32,7 +33,8 @@ if (!isset($admin_page_title)) $admin_page_title = 'Admin';
         <a href="documentaries.php" class="<?php echo (isset($admin_section) && $admin_section === 'documentaries') ? 'active' : ''; ?>">وثائقيات</a>
         <a href="ticker.php" class="<?php echo (isset($admin_section) && $admin_section === 'ticker') ? 'active' : ''; ?>">عاجل / Ticker</a>
         <a href="hero_slides.php">Hero Slides</a>
-        <?php if (is_admin_role()): ?><a href="users.php" class="<?php echo (isset($admin_section) && $admin_section === 'users') ? 'active' : ''; ?>">Users</a><?php endif; ?>
+        <?php if (is_superadmin()): ?><a href="users.php" class="<?php echo (isset($admin_section) && $admin_section === 'users') ? 'active' : ''; ?>">Users</a><?php endif; ?>
+        <a href="profile.php" class="<?php echo (isset($admin_section) && $admin_section === 'profile') ? 'active' : ''; ?>">My account</a>
       </nav>
     </aside>
     <main class="flex-grow-1">

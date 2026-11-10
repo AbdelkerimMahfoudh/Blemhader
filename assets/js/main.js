@@ -193,6 +193,10 @@ function setLang(lang) {
     var s = slides[idx];
     link.href = s.link;
     media.innerHTML = s.media;
+    // Re-render any Facebook embed that was just injected into the hero.
+    if (window.FB && FB.XFBML && media.querySelector('.fb-video')) {
+      try { FB.XFBML.parse(media); } catch (e) {}
+    }
     if (catAr) catAr.textContent = s.catAr;
     if (catFr) catFr.textContent = s.catFr;
     if (titleAr) titleAr.textContent = s.titleAr;
@@ -202,4 +206,29 @@ function setLang(lang) {
   }
 
   setInterval(function () { showSlide(idx + 1); }, 5000);
+})();
+
+/* News scope tabs: switch between National / Regional / International */
+(function () {
+  var tabs = document.querySelectorAll('.news-tab');
+  if (!tabs.length) return;
+  var panels = document.querySelectorAll('.news-panel');
+  tabs.forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      var scope = tab.getAttribute('data-scope');
+      tabs.forEach(function (t) {
+        var on = t === tab;
+        t.classList.toggle('active', on);
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      panels.forEach(function (p) {
+        p.classList.toggle('active', p.getAttribute('data-scope') === scope);
+      });
+      if (history.replaceState) {
+        var url = new URL(window.location.href);
+        url.searchParams.set('scope', scope);
+        history.replaceState(null, '', url);
+      }
+    });
+  });
 })();

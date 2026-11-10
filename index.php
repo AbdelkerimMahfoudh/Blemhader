@@ -22,11 +22,29 @@ if ($pdo) {
         }
     }
 }
-$hero_slides_order = ['live', 'meetings', 'news', 'economy', 'documentaries'];
+// Build the hero pool: latest item per section first (so every active section
+// is represented), ordered by recency, then topped up with the next most-recent
+// articles so the homepage always shows several DISTINCT fresh updates instead
+// of repeating the same story in the main card and the side list.
+$hero_pool = array_values($hero_items);
+usort($hero_pool, function ($a, $b) {
+    return strtotime($b['published_at'] ?? '1970-01-01') <=> strtotime($a['published_at'] ?? '1970-01-01');
+});
+$pool_ids = array_column($hero_pool, 'id');
+if ($pdo && count($hero_pool) < 5) {
+    $stp = $pdo->prepare('SELECT a.id, a.title_ar, a.title_fr, a.video_url, a.image_url, a.published_at, a.read_minutes, a.excerpt_ar, a.excerpt_fr, a.body_ar, a.body_fr, c.slug AS cat_slug, c.name_ar AS cat_ar, c.name_fr AS cat_fr FROM articles a JOIN categories c ON a.category_id = c.id WHERE a.status = "published" ORDER BY a.published_at DESC, a.id DESC LIMIT 12');
+    $stp->execute();
+    foreach ($stp->fetchAll() as $row) {
+        if (in_array($row['id'], $pool_ids)) continue;
+        $hero_pool[] = $row;
+        $pool_ids[] = $row['id'];
+        if (count($hero_pool) >= 5) break;
+    }
+}
+
 $hero_slides = [];
-foreach ($hero_slides_order as $slug) {
-    $it = $hero_items[$slug] ?? null;
-    if (!$it) continue;
+foreach ($hero_pool as $it) {
+    $slug = $it['cat_slug'];
     $link = in_array($slug, ['news','economy']) ? 'article.php?id=' . $it['id'] : $slug . '.php';
     $media = '';
     if (!empty($it['video_url'])) {
@@ -59,8 +77,8 @@ foreach ($hero_slides_order as $slug) {
     ];
 }
 $hero_main = $hero_slides[0] ?? null;
-$hero_side_order = ['meetings', 'news', 'economy', 'documentaries'];
-$bg_class = ['meetings' => 'bg-2', 'news' => 'bg-3', 'economy' => 'bg-4', 'documentaries' => 'bg-7'];
+$hero_side = array_slice($hero_pool, 1, 4); // up to 4 side cards, all distinct from the main
+$bg_class = ['live' => 'bg-1', 'meetings' => 'bg-2', 'news' => 'bg-3', 'economy' => 'bg-4', 'documentaries' => 'bg-7'];
 
 $section_items = [];
 if ($pdo) {
@@ -117,7 +135,7 @@ if ($pdo) {
     </div>
 
     <div class="hero-side">
-      <?php foreach ($hero_side_order as $slug): $item = $hero_items[$slug] ?? null; if (!$item) continue;
+      <?php foreach ($hero_side as $item): $slug = $item['cat_slug'] ?? 'news';
         $href = in_array($slug, ['news','economy']) ? 'article.php?id=' . $item['id'] : $slug . '.php';
         $thumb = item_thumb_url($item);
       ?>
@@ -145,9 +163,6 @@ if ($pdo) {
         </div>
       </a>
       <?php endforeach; ?>
-      <?php if (empty(array_filter($hero_items))): ?>
-      <p class="text-muted small"><span class="ar-text">أضف محتوى من monitor.blemhader لعرضه هنا.</span><span class="fr-text">Ajoutez du contenu via monitor.blemhader pour l'afficher ici.</span></p>
-      <?php endif; ?>
     </div>
   </div>
 

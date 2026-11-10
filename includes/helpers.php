@@ -39,24 +39,24 @@ function handle_video_upload() {
  * Handle image file upload (thumbnails). Returns web-relative path (e.g. uploads/images/xxx.jpg) or empty string.
  * @return string Path to use in image_url, or ''
  */
-function handle_image_upload() {
-    if (empty($_FILES['image_file']['name']) || $_FILES['image_file']['error'] !== UPLOAD_ERR_OK) {
+function handle_image_upload($field = 'image_file') {
+    if (empty($_FILES[$field]['name']) || $_FILES[$field]['error'] !== UPLOAD_ERR_OK) {
         return '';
     }
     $allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
     $finfo = finfo_open(FILEINFO_MIME_TYPE);
-    $mime = finfo_file($finfo, $_FILES['image_file']['tmp_name']);
+    $mime = finfo_file($finfo, $_FILES[$field]['tmp_name']);
     finfo_close($finfo);
     if (!in_array($mime, $allowed, true)) return '';
     $max = defined('MAX_IMAGE_SIZE') ? MAX_IMAGE_SIZE : (5 * 1024 * 1024);
-    if ($_FILES['image_file']['size'] > $max) return '';
+    if ($_FILES[$field]['size'] > $max) return '';
     $dir = defined('UPLOADS_IMAGES_DIR') ? UPLOADS_IMAGES_DIR : (__DIR__ . '/../uploads/images');
     if (!is_dir($dir)) @mkdir($dir, 0755, true);
-    $ext = strtolower(pathinfo($_FILES['image_file']['name'], PATHINFO_EXTENSION) ?: 'jpg');
+    $ext = strtolower(pathinfo($_FILES[$field]['name'], PATHINFO_EXTENSION) ?: 'jpg');
     if (!in_array($ext, ['jpg','jpeg','png','webp','gif'])) $ext = 'jpg';
     if ($ext === 'jpeg') $ext = 'jpg';
     $name = uniqid('img_', true) . '.' . $ext;
-    if (!move_uploaded_file($_FILES['image_file']['tmp_name'], $dir . '/' . $name)) return '';
+    if (!move_uploaded_file($_FILES[$field]['tmp_name'], $dir . '/' . $name)) return '';
     return 'uploads/images/' . $name;
 }
 
@@ -98,11 +98,13 @@ function embed_video($url) {
         return '<iframe src="https://player.vimeo.com/video/' . (int)$id . '" frameborder="0" allowfullscreen allow="autoplay; fullscreen; picture-in-picture" loading="lazy"></iframe>';
     }
     if (preg_match('#(?:facebook\.com|fb\.com|fb\.watch|fburl\.com)#i', $url)) {
-        $embed_url = 'https://www.facebook.com/plugins/video.php?href=' . rawurlencode($url) . '&show_text=false&width=560';
-        return '<iframe src="' . htmlspecialchars($embed_url) . '" frameborder="0" allowfullscreen allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share" loading="lazy" style="width:100%;height:100%;min-height:315px;"></iframe>';
+        // Use Facebook's responsive embed so every video keeps its real aspect
+        // ratio (portrait reels, vertical lives, or landscape) instead of being
+        // cropped into a fixed 16:9 box. The SDK (loaded in footer.php) renders it.
+        return '<div class="fb-video" data-href="' . htmlspecialchars($url) . '" data-show-text="false" data-allowfullscreen="true" data-width="auto" data-lazy="true"></div>';
     }
     if (preg_match('#\.(mp4|webm|ogg|mov)(\?|$)#i', $url)) {
-        return '<video src="' . htmlspecialchars($url) . '" controls playsinline preload="metadata" style="width:100%;height:100%;object-fit:cover;"></video>';
+        return '<video src="' . htmlspecialchars($url) . '" controls playsinline preload="metadata" style="width:100%;height:100%;object-fit:contain;background:#000;"></video>';
     }
     return '';
 }

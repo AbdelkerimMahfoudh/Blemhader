@@ -46,6 +46,16 @@ define('UPLOADS_IMAGES_DIR', __DIR__ . '/../uploads/images');
 define('MAX_VIDEO_SIZE', 100 * 1024 * 1024); // 100 MB
 define('MAX_IMAGE_SIZE', 5 * 1024 * 1024);   // 5 MB for thumbnails
 
+// Autonomous news ingestion (api/ingest_news.php). Set INGEST_TOKEN via the
+// server environment (.htaccess SetEnv). Set INGEST_ENABLED=0 to kill ingestion
+// instantly without touching the cron.
+if (!defined('INGEST_TOKEN')) {
+    define('INGEST_TOKEN', getenv('INGEST_TOKEN') ?: '');
+}
+if (!defined('INGEST_ENABLED')) {
+    define('INGEST_ENABLED', getenv('INGEST_ENABLED') !== '0');
+}
+
 require_once __DIR__ . '/db.php';
 
 $default_lang = 'ar';

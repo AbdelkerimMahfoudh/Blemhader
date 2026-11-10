@@ -21,7 +21,7 @@ $message = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
     // PHP discards the whole request when it exceeds post_max_size (typical with large videos)
-    $message = 'Upload too large for the server (post_max_size = ' . ini_get('post_max_size') . '). Use a smaller file or a video URL.';
+    $message = 'Upload too large for the server (post_max_size = ' . ini_get('post_max_size') . '). Use a smaller file or a video link.';
 } elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $title_ar = trim($_POST['title_ar'] ?? '');
     $title_fr = trim($_POST['title_fr'] ?? '');
@@ -33,6 +33,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && (int)($_SERVER['CO
     $body_ar = trim($_POST['body_ar'] ?? '');
     $body_fr = trim($_POST['body_fr'] ?? '');
     $status = in_array($_POST['status'] ?? '', ['draft','published']) ? $_POST['status'] : 'draft';
+    $scope = in_array($_POST['scope'] ?? '', ['local','regional','global'], true) ? $_POST['scope'] : 'local';
+    $show_author = isset($_POST['show_author']) ? 1 : 0;
     $sort_order = (int)($_POST['sort_order'] ?? 0);
 
     if (isset($_POST['delete'])) {
@@ -75,12 +77,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && (int)($_SERVER['CO
         $published_at = $status === 'published' ? date('Y-m-d H:i:s') : null;
         $slug = 'news-' . ($edit_id ? $edit_id : time());
         if ($edit_id) {
-            $pdo->prepare('UPDATE articles SET title_ar=?, title_fr=?, image_url=?, video_url=?, excerpt_ar=?, excerpt_fr=?, body_ar=?, body_fr=?, status=?, sort_order=?, published_at=? WHERE id=? AND category_id=?')
-                ->execute([$title_ar, $title_fr, $final_image ?: null, $final_video ?: null, $excerpt_ar ?: null, $excerpt_fr ?: null, $body_ar ?: null, $body_fr ?: null, $status, $sort_order, $published_at ?: null, $edit_id, $category_id]);
+            $editor_id = (int)($_SESSION['admin_user_id'] ?? 0) ?: null;
+            $pdo->prepare('UPDATE articles SET title_ar=?, title_fr=?, image_url=?, video_url=?, excerpt_ar=?, excerpt_fr=?, body_ar=?, body_fr=?, status=?, scope=?, show_author=?, author_id=COALESCE(author_id, ?), sort_order=?, published_at=? WHERE id=? AND category_id=?')
+                ->execute([$title_ar, $title_fr, $final_image ?: null, $final_video ?: null, $excerpt_ar ?: null, $excerpt_fr ?: null, $body_ar ?: null, $body_fr ?: null, $status, $scope, $show_author, $editor_id, $sort_order, $published_at ?: null, $edit_id, $category_id]);
             $message = 'Updated.';
         } else {
-            $pdo->prepare('INSERT INTO articles (category_id, title_ar, title_fr, slug, excerpt_ar, excerpt_fr, body_ar, body_fr, image_url, video_url, status, sort_order, published_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
-                ->execute([$category_id, $title_ar, $title_fr, $slug, $excerpt_ar ?: null, $excerpt_fr ?: null, $body_ar ?: null, $body_fr ?: null, $final_image ?: null, $final_video ?: null, $status, $sort_order, $published_at]);
+            $author_id = (int)($_SESSION['admin_user_id'] ?? 0) ?: null;
+            $pdo->prepare('INSERT INTO articles (category_id, scope, author_id, show_author, title_ar, title_fr, slug, excerpt_ar, excerpt_fr, body_ar, body_fr, image_url, video_url, status, sort_order, published_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+                ->execute([$category_id, $scope, $author_id, $show_author, $title_ar, $title_fr, $slug, $excerpt_ar ?: null, $excerpt_fr ?: null, $body_ar ?: null, $body_fr ?: null, $final_image ?: null, $final_video ?: null, $status, $sort_order, $published_at]);
             $message = 'Added.';
         }
         header('Location: news.php?msg=' . urlencode($message));
@@ -91,18 +95,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && (int)($_SERVER['CO
 }
 
 $message = $message ?: ($_GET['msg'] ?? '');
-$items = $pdo->prepare('SELECT id, title_ar, title_fr, image_url, video_url, status, sort_order, created_at FROM articles WHERE category_id = ? ORDER BY sort_order ASC, published_at DESC, id DESC');
+$items = $pdo->prepare('SELECT id, title_ar, title_fr, image_url, video_url, status, scope, sort_order, created_at FROM articles WHERE category_id = ? ORDER BY sort_order ASC, published_at DESC, id DESC');
 $items->execute([$category_id]);
 $items = $items->fetchAll();
 
 $editing = null;
 if ($edit_id) {
-    foreach ($items as $i) { if ((int)$i['id'] === $edit_id) { $editing = $i; break; } }
-    if (!$editing) {
-        $st = $pdo->prepare('SELECT * FROM articles WHERE id = ? AND category_id = ?');
-        $st->execute([$edit_id, $category_id]);
-        $editing = $st->fetch();
-    }
+    // Always load the full row (the list query above omits body/excerpt columns,
+    // so reusing it would leave the edit form's body fields empty and break saves).
+    $st = $pdo->prepare('SELECT * FROM articles WHERE id = ? AND category_id = ?');
+    $st->execute([$edit_id, $category_id]);
+    $editing = $st->fetch();
 }
 
 require __DIR__ . '/includes/header.php';
@@ -176,7 +179,7 @@ require __DIR__ . '/includes/header.php';
     </div>
     <div class="row g-2 mb-2">
       <div class="col-md-6">
-        <label class="form-label">Body (AR) – full post (optional if a video is set)</label>
+        <label class="form-label">Body (AR) – full post (optional for video posts)</label>
         <textarea name="body_ar" class="form-control" rows="8"><?php echo htmlspecialchars($editing['body_ar'] ?? ''); ?></textarea>
       </div>
       <div class="col-md-6">
@@ -193,9 +196,21 @@ require __DIR__ . '/includes/header.php';
         </select>
       </div>
       <div class="col-md-4">
+        <label class="form-label">Scope / القسم</label>
+        <select name="scope" class="form-select">
+          <option value="local" <?php echo ($editing['scope'] ?? 'local') === 'local' ? 'selected' : ''; ?>>National · وطني</option>
+          <option value="regional" <?php echo ($editing['scope'] ?? '') === 'regional' ? 'selected' : ''; ?>>Régional · إقليمي</option>
+          <option value="global" <?php echo ($editing['scope'] ?? '') === 'global' ? 'selected' : ''; ?>>International · دولي</option>
+        </select>
+      </div>
+      <div class="col-md-4">
         <label class="form-label">Sort order</label>
         <input type="number" name="sort_order" class="form-control" value="<?php echo (int)($editing['sort_order'] ?? 0); ?>">
       </div>
+    </div>
+    <div class="form-check form-switch mb-3">
+      <input class="form-check-input" type="checkbox" role="switch" id="show_author" name="show_author" value="1" <?php echo !empty($editing['show_author']) ? 'checked' : ''; ?>>
+      <label class="form-check-label" for="show_author">Show publisher / إظهار الناشر <span class="text-muted small">(displays your name below the date)</span></label>
     </div>
     <button type="submit" class="btn btn-primary"><?php echo $editing ? 'Update' : 'Add'; ?></button>
     <?php if ($editing): ?><a href="news.php" class="btn btn-secondary">Cancel</a><?php endif; ?>
@@ -204,12 +219,13 @@ require __DIR__ . '/includes/header.php';
 <?php endif; ?>
 
 <table class="table table-sm">
-  <thead><tr><th>Title</th><th>Media</th><th>Status</th><th>Order</th><th></th></tr></thead>
+  <thead><tr><th>Title</th><th>Media</th><th>Scope</th><th>Status</th><th>Order</th><th></th></tr></thead>
   <tbody>
     <?php foreach ($items as $i): ?>
     <tr>
       <td><?php echo htmlspecialchars($i['title_ar'] ?: $i['title_fr']); ?></td>
       <td><?php echo !empty($i['video_url']) ? 'Video' : (!empty($i['image_url']) ? 'Photo' : '—'); ?></td>
+      <td><?php $sc = $i['scope'] ?? 'local'; echo ['local'=>'وطني','regional'=>'إقليمي','global'=>'دولي'][$sc] ?? $sc; ?></td>
       <td><?php echo htmlspecialchars($i['status']); ?></td>
       <td><?php echo (int)$i['sort_order']; ?></td>
       <td>

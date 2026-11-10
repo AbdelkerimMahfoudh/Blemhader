@@ -500,7 +500,8 @@ body[dir="rtl"] .nav-side-link:hover {
 .hero-video {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  background: #000;
   display: block;
 }
 
@@ -516,7 +517,8 @@ body[dir="rtl"] .nav-side-link:hover {
   top: 0; left: 0; right: 0; bottom: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  background: #000;
 }
 
 .hero-overlay {
@@ -816,45 +818,10 @@ body.fr .video-card h3 { font-family: 'Source Serif 4', serif; }
 }
 
 .post-card-img-wrap {
-  position: relative;
   width: 100%;
   height: 200px;
   overflow: hidden;
   background: var(--dark);
-}
-
-.post-card-play {
-  position: absolute;
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  width: 52px; height: 52px;
-  border-radius: 50%;
-  background: rgba(0,0,0,0.6);
-  color: #fff;
-  font-size: 20px;
-  display: flex; align-items: center; justify-content: center;
-  padding-left: 4px;
-  pointer-events: none;
-}
-
-.post-video {
-  position: relative;
-  width: 100%;
-  padding-top: 56.25%;
-  background: var(--dark);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.post-video iframe,
-.post-video video {
-  position: absolute;
-  top: 0; left: 0;
-  width: 100% !important;
-  height: 100% !important;
-  min-height: 0 !important;
-  border: none;
-  object-fit: contain !important;
 }
 
 .post-card-img {
@@ -1141,6 +1108,22 @@ body.fr .fr-text { display: block; }
   .opinion-row { grid-template-columns: 1fr 1fr; }
   .footer-grid { grid-template-columns: 1fr; }
   .logo-main { font-size: 28px; }
+
+  /* Side cards: full width on phones so the title isn't squeezed into a
+     narrow column next to the thumbnail (was 50% from the ≤900px rule). */
+  .hero-side { gap: 0; }
+  .side-card {
+    width: 100%;
+    border-right: none;
+    padding-inline-end: 0;
+    padding-bottom: 14px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .side-card:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+  .side-card .thumb,
+  .side-card .thumb-placeholder { width: 110px; height: 80px; }
+  .side-card h3 { font-size: 15px; }
 }
 
 /* Phone view (≤480px) – fix header and nav layout */
@@ -1198,3 +1181,122 @@ body.fr .fr-text { display: block; }
 .bg-6 { background: linear-gradient(135deg, #3d3d5c, #5c6b7a); }
 .bg-7 { background: linear-gradient(135deg, #08454b, #0D5C63); }
 .bg-8 { background: linear-gradient(135deg, #0e6655, #1abc9c); }
+
+/* ─── FACEBOOK VIDEO EMBEDS (responsive SDK) ─── */
+/* The Facebook SDK renders each video at its real aspect ratio. We drop the
+   fixed 16:9 wrapper for FB videos so portrait reels / vertical lives show in
+   full (tall) and landscape videos show wide — never cropped. */
+.video-card .video-wrap:has(.fb-video) {
+  padding-top: 0;
+  height: auto;
+  background: #000;
+}
+.fb-video {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  background: #000;
+}
+.fb-video > span,
+.fb-video iframe {
+  max-width: 100% !important;
+}
+/* In the fixed-height hero, center the embed and clip any overflow gracefully. */
+.hero-embed .fb-video {
+  position: absolute;
+  inset: 0;
+  align-items: center;
+}
+
+/* ─── NEWS SCOPE TABS (National / Regional / International) ─── */
+.news-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 24px;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 2px;
+}
+.news-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  padding: 10px 18px;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+.news-tab:hover { color: var(--text); }
+.news-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.news-tab-count {
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--light);
+  color: var(--text-muted);
+  border-radius: 20px;
+  padding: 1px 8px;
+  min-width: 20px;
+  text-align: center;
+}
+.news-tab.active .news-tab-count {
+  background: var(--accent);
+  color: #fff;
+}
+.news-panel { display: none; }
+.news-panel.active { display: block; animation: news-fade 0.25s ease; }
+@keyframes news-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* ─── NEWS VIDEO POSTS ─── */
+.post-card-img-wrap { position: relative; }
+
+.post-card-play {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  font-size: 20px;
+  display: flex; align-items: center; justify-content: center;
+  padding-left: 4px;
+  pointer-events: none;
+}
+
+/* Article page: YouTube / Vimeo / uploaded videos in a 16:9 box */
+.post-video {
+  position: relative;
+  width: 100%;
+  padding-top: 56.25%;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.post-video iframe,
+.post-video video {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100% !important;
+  height: 100% !important;
+  border: none;
+  object-fit: contain !important;
+}
+/* Facebook embeds size themselves to the real aspect ratio (see .fb-video above) */
+.post-video.post-video-fb {
+  padding-top: 0;
+  height: auto;
+}
+.post-video.post-video-fb iframe {
+  position: static;
+  height: auto !important;
+}
